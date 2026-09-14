@@ -398,13 +398,19 @@ async function apiUpdate(sheet, id, data){
 /* ====== CARGA INICIAL ====== */
 async function cargarTodo(){
   try{
-    state.productos = await apiGet('Productos');
-    state.compras = await apiGet('Compras');
-    state.produccion = await apiGet('Produccion');
-    state.clientes = await apiGet('Clientes');
-    state.ventas = await apiGet('Ventas');
-    state.cobros = await apiGet('Cobros');
-    const cfgRows = await apiGet('Config');
+    const res = await fetch(API_URL); // sin ?sheet= trae TODO junto, un solo viaje
+    const json = await res.json();
+    if(json.error) throw new Error(json.error);
+    const all = json.all || {};
+
+    state.productos = all.Productos || [];
+    state.compras = all.Compras || [];
+    state.produccion = all.Produccion || [];
+    state.clientes = all.Clientes || [];
+    state.ventas = all.Ventas || [];
+    state.cobros = all.Cobros || [];
+
+    const cfgRows = all.Config || [];
     if(cfgRows.length){
       const row = cfgRows.find(r=>r.clave==='merma_pct_default');
       if(row) state.config.merma_pct_default = parseFloat(row.valor);
