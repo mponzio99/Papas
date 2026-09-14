@@ -229,16 +229,6 @@
   <!-- CONFIG -->
   <section class="panel" id="panel-config">
     <div class="card">
-      <h2>Conexión con Google Sheets</h2>
-      <div class="field"><label>URL de la Web App (Apps Script)</label>
-        <input id="cfg_apiurl" placeholder="https://script.google.com/macros/s/.../exec">
-      </div>
-      <button class="primary" onclick="guardarApiUrl()">Guardar y conectar</button>
-      <p style="color:var(--text-muted);font-size:.8rem;margin-top:10px;">
-        Mientras no cargues una URL, la app funciona en modo demo (los datos se guardan solo en este navegador).
-      </p>
-    </div>
-    <div class="card">
       <h2>Parámetros generales</h2>
       <div class="field"><label>% de merma por defecto</label><input id="cfg_merma" type="number"></div>
       <button class="primary" onclick="guardarConfig()">Guardar</button>
@@ -251,7 +241,7 @@
 
 <script>
 /* ====== ESTADO ====== */
-let API_URL = localStorage.getItem('papas_api_url') || '';
+const API_URL = 'https://script.google.com/macros/s/AKfycbyWCi2Eg-LhkpkDMRc83AHzURSLv4TukBZB4KWnTTZjYAGJwSCQ5-jukjBgdpDWz3OY/exec';
 let state = {
   productos: [],
   compras: [],
@@ -271,34 +261,25 @@ document.querySelectorAll('#tabs button').forEach(btn=>{
   });
 });
 
-/* ====== CONEXIÓN (SHEETS o DEMO LOCAL) ====== */
-function isLive(){ return !!API_URL; }
-
-function updateConnBadge(){
+/* ====== CONEXIÓN (SIEMPRE GOOGLE SHEETS) ====== */
+function updateConnBadge(estado){
   const dot = document.getElementById('connDot');
   const label = document.getElementById('connLabel');
-  if(isLive()){
-    dot.className='conn-dot conn-live'; label.textContent='Conectado a Sheets';
+  if(estado==='error'){
+    dot.className='conn-dot'; dot.style.background='var(--danger)';
+    label.textContent='Sin conexión a Sheets';
   } else {
-    dot.className='conn-dot conn-demo'; label.textContent='Modo demo (local)';
+    dot.className='conn-dot conn-live'; label.textContent='Conectado a Sheets';
   }
 }
 
 async function apiGet(sheet){
-  if(!isLive()) return JSON.parse(localStorage.getItem('papas_demo_'+sheet) || '[]');
   const res = await fetch(API_URL + '?sheet=' + sheet);
   const json = await res.json();
   return json.data || [];
 }
 
 async function apiAdd(sheet, data){
-  if(!isLive()){
-    data.id = data.id || Math.random().toString(36).slice(2,10);
-    const arr = JSON.parse(localStorage.getItem('papas_demo_'+sheet) || '[]');
-    arr.push(data);
-    localStorage.setItem('papas_demo_'+sheet, JSON.stringify(arr));
-    return data;
-  }
   const res = await fetch(API_URL, {
     method:'POST',
     body: JSON.stringify({ action:'add', sheet, data })
@@ -318,9 +299,11 @@ async function cargarTodo(){
       const row = cfgRows.find(r=>r.clave==='merma_pct_default');
       if(row) state.config.merma_pct_default = parseFloat(row.valor);
     }
+    updateConnBadge('ok');
   }catch(err){
     console.error(err);
-    showToast('No se pudo conectar a Sheets, revisá la URL en Config');
+    updateConnBadge('error');
+    showToast('No se pudo conectar con Google Sheets');
   }
   renderAll();
 }
@@ -332,7 +315,6 @@ function renderAll(){
   renderCompras();
   renderProduccion();
   renderStock();
-  document.getElementById('cfg_apiurl').value = API_URL;
   document.getElementById('cfg_merma').value = state.config.merma_pct_default;
   document.getElementById('pr_merma').value = state.config.merma_pct_default;
 }
@@ -477,19 +459,10 @@ async function crearProduccion(){
   showToast('Lote registrado');
 }
 
-function guardarApiUrl(){
-  API_URL = document.getElementById('cfg_apiurl').value.trim();
-  localStorage.setItem('papas_api_url', API_URL);
-  showToast('Reconectando...');
-  cargarTodo();
-}
-
 async function guardarConfig(){
   const merma = parseFloat(document.getElementById('cfg_merma').value);
   state.config.merma_pct_default = merma;
-  if(isLive()){
-    await apiAdd('Config', { clave:'merma_pct_default', valor: merma });
-  }
+  await apiAdd('Config', { clave:'merma_pct_default', valor: merma });
   document.getElementById('pr_merma').value = merma;
   showToast('Configuración guardada');
 }
