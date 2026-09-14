@@ -139,6 +139,7 @@
   <button data-tab="compras">Compras</button>
   <button data-tab="produccion">Producción</button>
   <button data-tab="clientes">Clientes</button>
+  <button data-tab="ventas">Ventas</button>
   <button data-tab="config">Config</button>
 </nav>
 
@@ -256,6 +257,38 @@
     </div>
   </section>
 
+  <!-- VENTAS -->
+  <section class="panel" id="panel-ventas">
+    <div class="card">
+      <h2>Nueva venta</h2>
+      <div class="grid">
+        <div class="field"><label>Fecha</label><input id="v_fecha" type="date"></div>
+        <div class="field"><label>Cliente</label><select id="v_cliente" onchange="onCambioClienteVenta()"></select></div>
+        <div class="field"><label>Producto</label><select id="v_producto" onchange="onCambioProductoVenta()"></select></div>
+        <div class="field"><label>Kg vendidos</label><input id="v_kg" type="number" oninput="recalcularTotalVenta()"></div>
+        <div class="field"><label>Precio por kg ($)</label><input id="v_precio" type="number" oninput="recalcularTotalVenta()"></div>
+        <div class="field"><label>Forma de pago</label>
+          <select id="v_forma_pago" onchange="onCambioFormaPago()">
+            <option value="contado">Contado</option>
+            <option value="transferencia">Transferencia</option>
+            <option value="cuenta_corriente">Cuenta corriente</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Total (calculado)</label><input id="v_total" type="number" readonly style="opacity:.75"></div>
+      <div class="empty" id="v_stockAviso" style="display:none;padding:8px 0;text-align:left;color:var(--danger);"></div>
+      <button class="primary" onclick="crearVenta(this)">Registrar venta</button>
+    </div>
+    <div class="card">
+      <h2>Historial de ventas</h2>
+      <table>
+        <thead><tr><th>Fecha</th><th>Cliente</th><th>Producto</th><th class="right">Kg</th><th>Pago</th><th class="right">Total</th></tr></thead>
+        <tbody id="ventasBody"></tbody>
+      </table>
+      <div class="empty" id="ventasEmpty" style="display:none;">No hay ventas registradas.</div>
+    </div>
+  </section>
+
   <!-- CONFIG -->
   <section class="panel" id="panel-config">
     <div class="card">
@@ -277,6 +310,7 @@ let state = {
   compras: [],
   produccion: [],
   clientes: [],
+  ventas: [],
   config: { merma_pct_default: 15 }
 };
 
@@ -319,6 +353,14 @@ async function apiAdd(sheet, data){
   return json.row || data;
 }
 
+async function apiUpdate(sheet, id, data){
+  const res = await fetch(API_URL, {
+    method:'POST',
+    body: JSON.stringify({ action:'update', sheet, id, data })
+  });
+  return await res.json();
+}
+
 /* ====== CARGA INICIAL ====== */
 async function cargarTodo(){
   try{
@@ -326,6 +368,7 @@ async function cargarTodo(){
     state.compras = await apiGet('Compras');
     state.produccion = await apiGet('Produccion');
     state.clientes = await apiGet('Clientes');
+    state.ventas = await apiGet('Ventas');
     const cfgRows = await apiGet('Config');
     if(cfgRows.length){
       const row = cfgRows.find(r=>r.clave==='merma_pct_default');
@@ -347,6 +390,7 @@ function renderAll(){
   renderCompras();
   renderProduccion();
   renderClientes();
+  renderVentas();
   renderStock();
   document.getElementById('cfg_merma').value = state.config.merma_pct_default;
   document.getElementById('pr_merma').value = state.config.merma_pct_default;
@@ -365,9 +409,13 @@ function renderProductos(){
       <td></td>
     </tr>`;
   });
-  // select de producción
+  // select de producción y de ventas
   const sel = document.getElementById('pr_producto');
   sel.innerHTML = state.productos.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
+  const selV = document.getElementById('v_producto');
+  if(selV){
+    selV.innerHTML = state.productos.map(p=>`<option value="${p.id}" data-precio="${p.precio_kg}">${p.nombre}</option>`).join('');
+  }
 }
 
 function renderCompras(){
@@ -416,6 +464,42 @@ function renderClientes(){
       <td class="right num">$${saldo.toLocaleString('es-AR')}</td>
     </tr>`;
   });
+  const selCl = document.getElementById('v_cliente');
+  if(selCl){
+    selCl.innerHTML = state.clientes.map(cl=>`<option value="${cl.id}">${cl.nombre}</option>`).join('');
+  }
+}
+
+function renderVentas(){
+  const body = document.getElementById('ventasBody');
+  const empty = document.getElementById('ventasEmpty');
+  if(!body) return;
+  body.innerHTML = '';
+  empty.style.display = state.ventas.length ? 'none' : 'block';
+  const FORMA_LABEL = { contado:'Contado', transferencia:'Transferencia', cuenta_corriente:'Cta. corriente' };
+  state.ventas.slice().reverse().forEach(v=>{
+    const cliente = state.clientes.find(c=>String(c.id)===String(v.cliente_id));
+    const prod = state.productos.find(p=>String(p.id)===String(v.producto_id));
+    body.innerHTML += `<tr>
+      <td>${v.fecha}</td>
+      <td>${cliente?cliente.nombre:'—'}</td>
+      <td>${prod?prod.nombre:'—'}</td>
+      <td class="right num">${Number(v.kg).toLocaleString('es-AR')}</td>
+      <td>${FORMA_LABEL[v.forma_pago]||v.forma_pago}</td>
+      <td class="right num">$${Number(v.total).toLocaleString('es-AR')}</td>
+    </tr>`;
+  });
+}
+
+function stockPorProducto(){
+  const porProducto = {};
+  state.produccion.forEach(pr=>{
+    porProducto[pr.producto_id] = (porProducto[pr.producto_id]||0) + Number(pr.kg_neto||0);
+  });
+  state.ventas.forEach(v=>{
+    porProducto[v.producto_id] = (porProducto[v.producto_id]||0) - Number(v.kg||0);
+  });
+  return porProducto;
 }
 
 function renderStock(){
@@ -423,10 +507,7 @@ function renderStock(){
   const empty = document.getElementById('stockEmpty');
   body.innerHTML = '';
 
-  const porProducto = {};
-  state.produccion.forEach(pr=>{
-    porProducto[pr.producto_id] = (porProducto[pr.producto_id]||0) + Number(pr.kg_neto||0);
-  });
+  const porProducto = stockPorProducto();
 
   const filas = Object.keys(porProducto).map(pid=>{
     const prod = state.productos.find(p=>String(p.id)===String(pid));
@@ -440,7 +521,7 @@ function renderStock(){
     body.innerHTML += `<tr>
       <td>${f.nombre}</td>
       <td><span class="chip chip-${f.categoria}">${CATEGORIA_LABEL[f.categoria]||''}</span></td>
-      <td class="right num">${f.kg.toLocaleString('es-AR')}</td>
+      <td class="right num" style="${f.kg<0?'color:var(--danger);':''}">${f.kg.toLocaleString('es-AR')}</td>
       <td class="right num">$${f.precio.toLocaleString('es-AR')}</td>
       <td class="right num">$${f.valor.toLocaleString('es-AR')}</td>
     </tr>`;
@@ -543,6 +624,72 @@ function crearCliente(btn){
     document.getElementById('cl_telefono').value='';
     renderClientes();
     showToast('Cliente agregado');
+  });
+}
+
+function onCambioProductoVenta(){
+  const sel = document.getElementById('v_producto');
+  const opt = sel.options[sel.selectedIndex];
+  if(opt){
+    document.getElementById('v_precio').value = opt.dataset.precio || '';
+  }
+  recalcularTotalVenta();
+  chequearStockVenta();
+}
+
+function onCambioClienteVenta(){ /* reservado para futuro (ver saldo del cliente, etc.) */ }
+function onCambioFormaPago(){ /* reservado para futuro */ }
+
+function recalcularTotalVenta(){
+  const kg = parseFloat(document.getElementById('v_kg').value) || 0;
+  const precio = parseFloat(document.getElementById('v_precio').value) || 0;
+  document.getElementById('v_total').value = (kg*precio) ? (kg*precio).toFixed(0) : '';
+  chequearStockVenta();
+}
+
+function chequearStockVenta(){
+  const producto_id = document.getElementById('v_producto').value;
+  const kg = parseFloat(document.getElementById('v_kg').value) || 0;
+  const aviso = document.getElementById('v_stockAviso');
+  if(!producto_id || !kg){ aviso.style.display='none'; return; }
+  const disponible = stockPorProducto()[producto_id] || 0;
+  if(kg > disponible){
+    aviso.textContent = `Ojo: solo hay ${disponible.toLocaleString('es-AR')} kg en stock de este producto.`;
+    aviso.style.display = 'block';
+  } else {
+    aviso.style.display = 'none';
+  }
+}
+
+function crearVenta(btn){
+  withLoading(btn, async ()=>{
+    const fecha = document.getElementById('v_fecha').value;
+    const cliente_id = document.getElementById('v_cliente').value;
+    const producto_id = document.getElementById('v_producto').value;
+    const kg = parseFloat(document.getElementById('v_kg').value);
+    const precio_kg = parseFloat(document.getElementById('v_precio').value);
+    const forma_pago = document.getElementById('v_forma_pago').value;
+    const total = parseFloat(document.getElementById('v_total').value);
+    if(!fecha || !cliente_id || !producto_id || !kg || !precio_kg){
+      showToast('Completá fecha, cliente, producto, kg y precio'); return;
+    }
+    const nueva = await apiAdd('Ventas', { fecha, cliente_id, producto_id, kg, precio_kg, total, forma_pago });
+    state.ventas.push(nueva);
+
+    if(forma_pago === 'cuenta_corriente'){
+      const cliente = state.clientes.find(c=>String(c.id)===String(cliente_id));
+      if(cliente){
+        const nuevoSaldo = Number(cliente.saldo||0) + total;
+        await apiUpdate('Clientes', cliente.id, { saldo: nuevoSaldo });
+        cliente.saldo = nuevoSaldo;
+      }
+    }
+
+    document.getElementById('v_kg').value='';
+    document.getElementById('v_total').value='';
+    document.getElementById('v_stockAviso').style.display='none';
+    renderVentas(); renderClientes(); renderStock();
+    showToast('Venta registrada');
   });
 }
 
