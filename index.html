@@ -140,6 +140,7 @@
   <button data-tab="produccion">Producción</button>
   <button data-tab="clientes">Clientes</button>
   <button data-tab="ventas">Ventas</button>
+  <button data-tab="cobros">Cobros</button>
   <button data-tab="config">Config</button>
 </nav>
 
@@ -289,6 +290,34 @@
     </div>
   </section>
 
+  <!-- COBROS -->
+  <section class="panel" id="panel-cobros">
+    <div class="card">
+      <h2>Registrar cobro</h2>
+      <div class="grid">
+        <div class="field"><label>Fecha</label><input id="co_fecha" type="date"></div>
+        <div class="field"><label>Cliente</label><select id="co_cliente"></select></div>
+        <div class="field"><label>Monto ($)</label><input id="co_monto" type="number"></div>
+        <div class="field"><label>Forma de pago</label>
+          <select id="co_forma_pago">
+            <option value="efectivo">Efectivo</option>
+            <option value="transferencia">Transferencia</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Notas (opcional)</label><input id="co_notas" placeholder="Ej: pago parcial"></div>
+      <button class="primary" onclick="crearCobro(this)">Registrar cobro</button>
+    </div>
+    <div class="card">
+      <h2>Historial de cobros</h2>
+      <table>
+        <thead><tr><th>Fecha</th><th>Cliente</th><th>Pago</th><th class="right">Monto</th></tr></thead>
+        <tbody id="cobrosBody"></tbody>
+      </table>
+      <div class="empty" id="cobrosEmpty" style="display:none;">No hay cobros registrados.</div>
+    </div>
+  </section>
+
   <!-- CONFIG -->
   <section class="panel" id="panel-config">
     <div class="card">
@@ -311,6 +340,7 @@ let state = {
   produccion: [],
   clientes: [],
   ventas: [],
+  cobros: [],
   config: { merma_pct_default: 15 }
 };
 
@@ -373,6 +403,7 @@ async function cargarTodo(){
     state.produccion = await apiGet('Produccion');
     state.clientes = await apiGet('Clientes');
     state.ventas = await apiGet('Ventas');
+    state.cobros = await apiGet('Cobros');
     const cfgRows = await apiGet('Config');
     if(cfgRows.length){
       const row = cfgRows.find(r=>r.clave==='merma_pct_default');
@@ -395,6 +426,7 @@ function renderAll(){
   renderProduccion();
   renderClientes();
   renderVentas();
+  renderCobros();
   renderStock();
   document.getElementById('cfg_merma').value = state.config.merma_pct_default;
   document.getElementById('pr_merma').value = state.config.merma_pct_default;
@@ -472,6 +504,10 @@ function renderClientes(){
   if(selCl){
     selCl.innerHTML = state.clientes.map(cl=>`<option value="${cl.id}">${cl.nombre}</option>`).join('');
   }
+  const selClCo = document.getElementById('co_cliente');
+  if(selClCo){
+    selClCo.innerHTML = state.clientes.map(cl=>`<option value="${cl.id}">${cl.nombre}</option>`).join('');
+  }
 }
 
 function renderVentas(){
@@ -504,6 +540,24 @@ function stockPorProducto(){
     porProducto[v.producto_id] = (porProducto[v.producto_id]||0) - Number(v.kg||0);
   });
   return porProducto;
+}
+
+function renderCobros(){
+  const body = document.getElementById('cobrosBody');
+  const empty = document.getElementById('cobrosEmpty');
+  if(!body) return;
+  body.innerHTML = '';
+  empty.style.display = state.cobros.length ? 'none' : 'block';
+  const FORMA_LABEL = { efectivo:'Efectivo', transferencia:'Transferencia' };
+  state.cobros.slice().reverse().forEach(co=>{
+    const cliente = state.clientes.find(c=>String(c.id)===String(co.cliente_id));
+    body.innerHTML += `<tr>
+      <td>${co.fecha}</td>
+      <td>${cliente?cliente.nombre:'—'}</td>
+      <td>${FORMA_LABEL[co.forma_pago]||co.forma_pago}</td>
+      <td class="right num">$${Number(co.monto).toLocaleString('es-AR')}</td>
+    </tr>`;
+  });
 }
 
 function renderStock(){
@@ -697,6 +751,32 @@ function crearVenta(btn){
   });
 }
 
+function crearCobro(btn){
+  withLoading(btn, async ()=>{
+    const fecha = document.getElementById('co_fecha').value;
+    const cliente_id = document.getElementById('co_cliente').value;
+    const monto = parseFloat(document.getElementById('co_monto').value);
+    const forma_pago = document.getElementById('co_forma_pago').value;
+    const notas = document.getElementById('co_notas').value.trim();
+    if(!fecha || !cliente_id || !monto){ showToast('Completá fecha, cliente y monto'); return; }
+
+    const nuevo = await apiAdd('Cobros', { fecha, cliente_id, monto, forma_pago, notas });
+    state.cobros.push(nuevo);
+
+    const cliente = state.clientes.find(c=>String(c.id)===String(cliente_id));
+    if(cliente){
+      const nuevoSaldo = Number(cliente.saldo||0) - monto;
+      await apiUpdate('Clientes', cliente.id, { saldo: nuevoSaldo });
+      cliente.saldo = nuevoSaldo;
+    }
+
+    document.getElementById('co_monto').value='';
+    document.getElementById('co_notas').value='';
+    renderCobros(); renderClientes();
+    showToast('Cobro registrado');
+  });
+}
+
 function guardarConfig(btn){
   withLoading(btn, async ()=>{
     const merma = parseFloat(document.getElementById('cfg_merma').value);
@@ -720,6 +800,8 @@ function showToast(msg){
 /* ====== INIT ====== */
 document.getElementById('pr_fecha').valueAsDate = new Date();
 document.getElementById('c_fecha').valueAsDate = new Date();
+document.getElementById('v_fecha').valueAsDate = new Date();
+document.getElementById('co_fecha').valueAsDate = new Date();
 cargarTodo();
 </script>
 </body>
