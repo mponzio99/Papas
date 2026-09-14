@@ -83,6 +83,7 @@
     cursor:pointer;margin-top:4px;
   }
   button.primary:active{transform:scale(.98);}
+  button.primary:disabled{opacity:.6;cursor:not-allowed;transform:none;}
   button.ghost{
     background:transparent;border:1px solid var(--border);color:var(--text-muted);
     padding:6px 10px;border-radius:6px;font-size:.78rem;cursor:pointer;
@@ -103,6 +104,8 @@
   .chip-congelada{background:#1B3B4D;color:var(--frost);}
   .chip-sin_frisar{background:#3A2E14;color:var(--accent);}
   .chip-condimentada{background:#2A1F3D;color:#B694E8;}
+  .chip-comercio{background:#1B3B4D;color:var(--frost);}
+  .chip-mostrador{background:#26394A;color:var(--text-muted);}
 
   .empty{color:var(--text-muted);font-size:.86rem;padding:14px 0;text-align:center;}
 
@@ -135,6 +138,7 @@
   <button data-tab="productos">Productos</button>
   <button data-tab="compras">Compras</button>
   <button data-tab="produccion">Producción</button>
+  <button data-tab="clientes">Clientes</button>
   <button data-tab="config">Config</button>
 </nav>
 
@@ -168,7 +172,7 @@
         </div>
         <div class="field"><label>Precio por kg ($)</label><input id="p_precio" type="number" placeholder="5000"></div>
       </div>
-      <button class="primary" onclick="crearProducto()">Agregar producto</button>
+      <button class="primary" onclick="crearProducto(this)">Agregar producto</button>
     </div>
     <div class="card">
       <h2>Catálogo</h2>
@@ -190,7 +194,7 @@
         <div class="field"><label>Kg comprados</label><input id="c_kg" type="number"></div>
         <div class="field"><label>Precio por kg ($)</label><input id="c_precio" type="number"></div>
       </div>
-      <button class="primary" onclick="crearCompra()">Registrar compra</button>
+      <button class="primary" onclick="crearCompra(this)">Registrar compra</button>
     </div>
     <div class="card">
       <h2>Historial de compras</h2>
@@ -214,7 +218,7 @@
       </div>
       <div class="field"><label>Kg netos resultantes (calculado)</label><input id="pr_kgneto" type="number" readonly style="opacity:.75"></div>
       <div class="field"><label>Notas (opcional)</label><input id="pr_notas" placeholder="Ej: lote grande, corte gajos"></div>
-      <button class="primary" onclick="crearProduccion()">Registrar lote</button>
+      <button class="primary" onclick="crearProduccion(this)">Registrar lote</button>
     </div>
     <div class="card">
       <h2>Historial de producción</h2>
@@ -226,12 +230,38 @@
     </div>
   </section>
 
+  <!-- CLIENTES -->
+  <section class="panel" id="panel-clientes">
+    <div class="card">
+      <h2>Nuevo cliente</h2>
+      <div class="grid">
+        <div class="field"><label>Nombre</label><input id="cl_nombre" placeholder="Nombre o razón social"></div>
+        <div class="field"><label>Tipo</label>
+          <select id="cl_tipo">
+            <option value="comercio">Comercio (cta. corriente)</option>
+            <option value="mostrador">Mostrador</option>
+          </select>
+        </div>
+        <div class="field"><label>Teléfono (opcional)</label><input id="cl_telefono" placeholder="0351..."></div>
+      </div>
+      <button class="primary" onclick="crearCliente(this)">Agregar cliente</button>
+    </div>
+    <div class="card">
+      <h2>Listado de clientes</h2>
+      <table>
+        <thead><tr><th>Nombre</th><th>Tipo</th><th>Teléfono</th><th class="right">Saldo cta. cte.</th></tr></thead>
+        <tbody id="clientesBody"></tbody>
+      </table>
+      <div class="empty" id="clientesEmpty" style="display:none;">No hay clientes cargados todavía.</div>
+    </div>
+  </section>
+
   <!-- CONFIG -->
   <section class="panel" id="panel-config">
     <div class="card">
       <h2>Parámetros generales</h2>
       <div class="field"><label>% de merma por defecto</label><input id="cfg_merma" type="number"></div>
-      <button class="primary" onclick="guardarConfig()">Guardar</button>
+      <button class="primary" onclick="guardarConfig(this)">Guardar</button>
     </div>
   </section>
 
@@ -246,6 +276,7 @@ let state = {
   productos: [],
   compras: [],
   produccion: [],
+  clientes: [],
   config: { merma_pct_default: 15 }
 };
 
@@ -294,6 +325,7 @@ async function cargarTodo(){
     state.productos = await apiGet('Productos');
     state.compras = await apiGet('Compras');
     state.produccion = await apiGet('Produccion');
+    state.clientes = await apiGet('Clientes');
     const cfgRows = await apiGet('Config');
     if(cfgRows.length){
       const row = cfgRows.find(r=>r.clave==='merma_pct_default');
@@ -314,6 +346,7 @@ function renderAll(){
   renderProductos();
   renderCompras();
   renderProduccion();
+  renderClientes();
   renderStock();
   document.getElementById('cfg_merma').value = state.config.merma_pct_default;
   document.getElementById('pr_merma').value = state.config.merma_pct_default;
@@ -368,6 +401,23 @@ function renderProduccion(){
   });
 }
 
+function renderClientes(){
+  const body = document.getElementById('clientesBody');
+  const empty = document.getElementById('clientesEmpty');
+  body.innerHTML = '';
+  empty.style.display = state.clientes.length ? 'none' : 'block';
+  const TIPO_LABEL = { comercio:'Comercio', mostrador:'Mostrador' };
+  state.clientes.slice().reverse().forEach(cl=>{
+    const saldo = Number(cl.saldo||0);
+    body.innerHTML += `<tr>
+      <td>${cl.nombre}</td>
+      <td><span class="chip chip-${cl.tipo}">${TIPO_LABEL[cl.tipo]||cl.tipo}</span></td>
+      <td>${cl.telefono||'—'}</td>
+      <td class="right num">$${saldo.toLocaleString('es-AR')}</td>
+    </tr>`;
+  });
+}
+
 function renderStock(){
   const body = document.getElementById('stockBody');
   const empty = document.getElementById('stockEmpty');
@@ -406,33 +456,53 @@ function renderStock(){
 }
 
 /* ====== ACCIONES ====== */
-async function crearProducto(){
-  const nombre = document.getElementById('p_nombre').value.trim();
-  const categoria = document.getElementById('p_categoria').value;
-  const precio_kg = parseFloat(document.getElementById('p_precio').value);
-  if(!nombre || !precio_kg){ showToast('Completá nombre y precio'); return; }
-  const nuevo = await apiAdd('Productos', { nombre, categoria, precio_kg, activo:true });
-  state.productos.push(nuevo);
-  document.getElementById('p_nombre').value='';
-  document.getElementById('p_precio').value='';
-  renderProductos(); renderStock();
-  showToast('Producto agregado');
+async function withLoading(btn, fn){
+  if(btn.disabled) return; // evita doble click mientras ya está procesando
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+  try{
+    await fn();
+  }catch(err){
+    console.error(err);
+    showToast('Ocurrió un error, probá de nuevo');
+  }finally{
+    btn.disabled = false;
+    btn.textContent = original;
+  }
 }
 
-async function crearCompra(){
-  const fecha = document.getElementById('c_fecha').value;
-  const proveedor = document.getElementById('c_proveedor').value.trim();
-  const kg = parseFloat(document.getElementById('c_kg').value);
-  const precio_kg = parseFloat(document.getElementById('c_precio').value);
-  if(!fecha || !proveedor || !kg || !precio_kg){ showToast('Completá todos los campos'); return; }
-  const total = kg * precio_kg;
-  const nuevo = await apiAdd('Compras', { fecha, proveedor, kg, precio_kg, total });
-  state.compras.push(nuevo);
-  document.getElementById('c_proveedor').value='';
-  document.getElementById('c_kg').value='';
-  document.getElementById('c_precio').value='';
-  renderCompras();
-  showToast('Compra registrada');
+function crearProducto(btn){
+  withLoading(btn, async ()=>{
+    const nombre = document.getElementById('p_nombre').value.trim();
+    const categoria = document.getElementById('p_categoria').value;
+    const precio_kg = parseFloat(document.getElementById('p_precio').value);
+    if(!nombre || !precio_kg){ showToast('Completá nombre y precio'); return; }
+    const nuevo = await apiAdd('Productos', { nombre, categoria, precio_kg, activo:true });
+    state.productos.push(nuevo);
+    document.getElementById('p_nombre').value='';
+    document.getElementById('p_precio').value='';
+    renderProductos(); renderStock();
+    showToast('Producto agregado');
+  });
+}
+
+function crearCompra(btn){
+  withLoading(btn, async ()=>{
+    const fecha = document.getElementById('c_fecha').value;
+    const proveedor = document.getElementById('c_proveedor').value.trim();
+    const kg = parseFloat(document.getElementById('c_kg').value);
+    const precio_kg = parseFloat(document.getElementById('c_precio').value);
+    if(!fecha || !proveedor || !kg || !precio_kg){ showToast('Completá todos los campos'); return; }
+    const total = kg * precio_kg;
+    const nuevo = await apiAdd('Compras', { fecha, proveedor, kg, precio_kg, total });
+    state.compras.push(nuevo);
+    document.getElementById('c_proveedor').value='';
+    document.getElementById('c_kg').value='';
+    document.getElementById('c_precio').value='';
+    renderCompras();
+    showToast('Compra registrada');
+  });
 }
 
 function recalcularNeto(){
@@ -442,29 +512,48 @@ function recalcularNeto(){
   document.getElementById('pr_kgneto').value = neto ? neto.toFixed(1) : '';
 }
 
-async function crearProduccion(){
-  const fecha = document.getElementById('pr_fecha').value;
-  const producto_id = document.getElementById('pr_producto').value;
-  const kg_crudo = parseFloat(document.getElementById('pr_kgcrudo').value);
-  const merma_pct = parseFloat(document.getElementById('pr_merma').value);
-  const kg_neto = parseFloat(document.getElementById('pr_kgneto').value);
-  const notas = document.getElementById('pr_notas').value.trim();
-  if(!fecha || !producto_id || !kg_crudo || !merma_pct){ showToast('Completá fecha, producto, kg y merma'); return; }
-  const nuevo = await apiAdd('Produccion', { fecha, producto_id, kg_crudo, merma_pct, kg_neto, notas });
-  state.produccion.push(nuevo);
-  document.getElementById('pr_kgcrudo').value='';
-  document.getElementById('pr_kgneto').value='';
-  document.getElementById('pr_notas').value='';
-  renderProduccion(); renderStock();
-  showToast('Lote registrado');
+function crearProduccion(btn){
+  withLoading(btn, async ()=>{
+    const fecha = document.getElementById('pr_fecha').value;
+    const producto_id = document.getElementById('pr_producto').value;
+    const kg_crudo = parseFloat(document.getElementById('pr_kgcrudo').value);
+    const merma_pct = parseFloat(document.getElementById('pr_merma').value);
+    const kg_neto = parseFloat(document.getElementById('pr_kgneto').value);
+    const notas = document.getElementById('pr_notas').value.trim();
+    if(!fecha || !producto_id || !kg_crudo || !merma_pct){ showToast('Completá fecha, producto, kg y merma'); return; }
+    const nuevo = await apiAdd('Produccion', { fecha, producto_id, kg_crudo, merma_pct, kg_neto, notas });
+    state.produccion.push(nuevo);
+    document.getElementById('pr_kgcrudo').value='';
+    document.getElementById('pr_kgneto').value='';
+    document.getElementById('pr_notas').value='';
+    renderProduccion(); renderStock();
+    showToast('Lote registrado');
+  });
 }
 
-async function guardarConfig(){
-  const merma = parseFloat(document.getElementById('cfg_merma').value);
-  state.config.merma_pct_default = merma;
-  await apiAdd('Config', { clave:'merma_pct_default', valor: merma });
-  document.getElementById('pr_merma').value = merma;
-  showToast('Configuración guardada');
+function crearCliente(btn){
+  withLoading(btn, async ()=>{
+    const nombre = document.getElementById('cl_nombre').value.trim();
+    const tipo = document.getElementById('cl_tipo').value;
+    const telefono = document.getElementById('cl_telefono').value.trim();
+    if(!nombre){ showToast('Completá el nombre'); return; }
+    const nuevo = await apiAdd('Clientes', { nombre, tipo, telefono, saldo:0 });
+    state.clientes.push(nuevo);
+    document.getElementById('cl_nombre').value='';
+    document.getElementById('cl_telefono').value='';
+    renderClientes();
+    showToast('Cliente agregado');
+  });
+}
+
+function guardarConfig(btn){
+  withLoading(btn, async ()=>{
+    const merma = parseFloat(document.getElementById('cfg_merma').value);
+    state.config.merma_pct_default = merma;
+    await apiAdd('Config', { clave:'merma_pct_default', valor: merma });
+    document.getElementById('pr_merma').value = merma;
+    showToast('Configuración guardada');
+  });
 }
 
 /* ====== TOAST ====== */
