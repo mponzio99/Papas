@@ -189,7 +189,8 @@
   <!-- PRODUCTOS -->
   <section class="panel" id="panel-productos">
     <div class="card">
-      <h2>Nuevo producto</h2>
+      <h2 id="p_form_title">Nuevo producto</h2>
+      <input type="hidden" id="p_edit_id" value="">
       <div class="grid">
         <div class="field"><label>Nombre</label><input id="p_nombre" placeholder="Bastón corte común"></div>
         <div class="field"><label>Categoría</label>
@@ -201,7 +202,8 @@
         </div>
         <div class="field"><label>Precio por kg ($)</label><input id="p_precio" type="number" placeholder="5000"></div>
       </div>
-      <button class="primary" onclick="crearProducto(this)">Agregar producto</button>
+      <button class="primary" id="p_submit_btn" onclick="crearProducto(this)">Agregar producto</button>
+      <button class="ghost" id="p_cancel_btn" style="display:none;margin-left:8px;" onclick="cancelarEdicionProducto()">Cancelar edición</button>
     </div>
     <div class="card">
       <h2>Catálogo</h2>
@@ -242,17 +244,24 @@
       <div class="grid">
         <div class="field"><label>Fecha</label><input id="pr_fecha" type="date"></div>
         <div class="field"><label>Producto resultante</label><select id="pr_producto"></select></div>
-        <div class="field"><label>Kg de papa cruda usada</label><input id="pr_kgcrudo" type="number" oninput="recalcularNeto()"></div>
-        <div class="field"><label>% de merma (pelado/corte)</label><input id="pr_merma" type="number" oninput="recalcularNeto()"></div>
       </div>
-      <div class="field"><label>Kg netos resultantes (calculado)</label><input id="pr_kgneto" type="number" readonly style="opacity:.75"></div>
-      <div class="field"><label>Notas (opcional)</label><input id="pr_notas" placeholder="Ej: lote grande, corte gajos"></div>
+      <div class="field"><label>Kg netos resultantes</label><input id="pr_kgneto" type="number" oninput="recalcularMerma()"></div>
+
+      <details style="margin:14px 0 4px;">
+        <summary style="cursor:pointer;color:var(--text-muted);font-size:.85rem;">Datos opcionales (peso bruto y merma)</summary>
+        <div class="grid" style="margin-top:10px;">
+          <div class="field"><label>Kg de papa cruda (bruto)</label><input id="pr_kgcrudo" type="number" oninput="recalcularMerma()"></div>
+          <div class="field"><label>Merma (informativo)</label><input id="pr_merma_info" type="text" readonly style="opacity:.75"></div>
+        </div>
+        <div class="field"><label>Notas</label><input id="pr_notas" placeholder="Ej: lote grande, corte gajos"></div>
+      </details>
+
       <button class="primary" onclick="crearProduccion(this)">Registrar lote</button>
     </div>
     <div class="card">
       <h2>Historial de producción</h2>
       <table>
-        <thead><tr><th>Fecha</th><th>Producto</th><th class="right">Kg crudo</th><th class="right">Merma</th><th class="right">Kg neto</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Producto</th><th class="right">Kg neto</th><th class="right">Merma</th></tr></thead>
         <tbody id="produccionBody"></tbody>
       </table>
       <div class="empty" id="produccionEmpty" style="display:none;">No hay lotes registrados.</div>
@@ -439,6 +448,16 @@ async function apiUpdate(sheet, id, data){
   return json;
 }
 
+async function apiDelete(sheet, id){
+  const res = await fetch(API_URL, {
+    method:'POST',
+    body: JSON.stringify({ action:'delete', sheet, id })
+  });
+  const json = await res.json();
+  if(json.error) throw new Error(json.error);
+  return json;
+}
+
 /* ====== CARGA INICIAL ====== */
 async function cargarTodo(){
   try{
@@ -479,7 +498,6 @@ function renderAll(){
   renderCobros();
   renderStock();
   document.getElementById('cfg_merma').value = state.config.merma_pct_default;
-  document.getElementById('pr_merma').value = state.config.merma_pct_default;
 }
 
 function renderProductos(){
@@ -492,15 +510,18 @@ function renderProductos(){
       <td>${p.nombre}</td>
       <td><span class="chip chip-${p.categoria}">${CATEGORIA_LABEL[p.categoria]||p.categoria}</span></td>
       <td class="right num">$${Number(p.precio_kg).toLocaleString('es-AR')}</td>
-      <td></td>
+      <td style="white-space:nowrap;">
+        <button class="ghost" onclick="editarProducto('${p.id}')">Editar</button>
+        <button class="ghost" onclick="eliminarProducto('${p.id}', this)">Eliminar</button>
+      </td>
     </tr>`;
   });
-  // select de producción y de ventas
+  // selects de producción y de ventas — con categoría visible para no confundir productos con el mismo nombre
   const sel = document.getElementById('pr_producto');
-  sel.innerHTML = state.productos.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
+  sel.innerHTML = state.productos.map(p=>`<option value="${p.id}">${p.nombre} — ${CATEGORIA_LABEL[p.categoria]||p.categoria}</option>`).join('');
   const selV = document.getElementById('v_producto');
   if(selV){
-    selV.innerHTML = state.productos.map(p=>`<option value="${p.id}" data-precio="${p.precio_kg}">${p.nombre}</option>`).join('');
+    selV.innerHTML = state.productos.map(p=>`<option value="${p.id}" data-precio="${p.precio_kg}">${p.nombre} — ${CATEGORIA_LABEL[p.categoria]||p.categoria}</option>`).join('');
   }
 }
 
@@ -526,11 +547,11 @@ function renderProduccion(){
   empty.style.display = state.produccion.length ? 'none' : 'block';
   state.produccion.slice().reverse().forEach(pr=>{
     const prod = state.productos.find(p=>String(p.id)===String(pr.producto_id));
+    const merma = (pr.merma_pct !== '' && pr.merma_pct !== undefined && pr.merma_pct !== null) ? pr.merma_pct+'%' : '—';
     body.innerHTML += `<tr>
       <td>${pr.fecha}</td><td>${prod?prod.nombre:'—'}</td>
-      <td class="right num">${Number(pr.kg_crudo).toLocaleString('es-AR')}</td>
-      <td class="right num">${pr.merma_pct}%</td>
       <td class="right num">${Number(pr.kg_neto).toLocaleString('es-AR')}</td>
+      <td class="right num">${merma}</td>
     </tr>`;
   });
 }
@@ -663,16 +684,59 @@ async function withLoading(btn, fn){
 
 function crearProducto(btn){
   withLoading(btn, async ()=>{
+    const editId = document.getElementById('p_edit_id').value;
     const nombre = document.getElementById('p_nombre').value.trim();
     const categoria = document.getElementById('p_categoria').value;
     const precio_kg = parseFloat(document.getElementById('p_precio').value);
     if(!nombre || !precio_kg){ showToast('Completá nombre y precio'); return; }
-    const nuevo = await apiAdd('Productos', { nombre, categoria, precio_kg, activo:true });
-    state.productos.push(nuevo);
-    document.getElementById('p_nombre').value='';
-    document.getElementById('p_precio').value='';
+
+    if(editId){
+      await apiUpdate('Productos', editId, { nombre, categoria, precio_kg });
+      const p = state.productos.find(x=>String(x.id)===String(editId));
+      if(p){ p.nombre = nombre; p.categoria = categoria; p.precio_kg = precio_kg; }
+      cancelarEdicionProducto();
+      showToast('Producto actualizado');
+    } else {
+      const nuevo = await apiAdd('Productos', { nombre, categoria, precio_kg, activo:true });
+      state.productos.push(nuevo);
+      document.getElementById('p_nombre').value='';
+      document.getElementById('p_precio').value='';
+      showToast('Producto agregado');
+    }
     renderProductos(); renderStock();
-    showToast('Producto agregado');
+  });
+}
+
+function editarProducto(id){
+  const p = state.productos.find(x=>String(x.id)===String(id));
+  if(!p) return;
+  document.getElementById('p_edit_id').value = p.id;
+  document.getElementById('p_nombre').value = p.nombre;
+  document.getElementById('p_categoria').value = p.categoria;
+  document.getElementById('p_precio').value = p.precio_kg;
+  document.getElementById('p_form_title').textContent = 'Editar producto';
+  document.getElementById('p_submit_btn').textContent = 'Guardar cambios';
+  document.getElementById('p_cancel_btn').style.display = 'inline-block';
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function cancelarEdicionProducto(){
+  document.getElementById('p_edit_id').value = '';
+  document.getElementById('p_nombre').value = '';
+  document.getElementById('p_precio').value = '';
+  document.getElementById('p_categoria').value = 'congelada';
+  document.getElementById('p_form_title').textContent = 'Nuevo producto';
+  document.getElementById('p_submit_btn').textContent = 'Agregar producto';
+  document.getElementById('p_cancel_btn').style.display = 'none';
+}
+
+function eliminarProducto(id, btn){
+  if(!confirm('¿Eliminar este producto? No se puede deshacer.')) return;
+  withLoading(btn, async ()=>{
+    await apiDelete('Productos', id);
+    state.productos = state.productos.filter(p=>String(p.id)!==String(id));
+    renderProductos(); renderStock();
+    showToast('Producto eliminado');
   });
 }
 
@@ -694,26 +758,38 @@ function crearCompra(btn){
   });
 }
 
-function recalcularNeto(){
+function recalcularMerma(){
   const kgCrudo = parseFloat(document.getElementById('pr_kgcrudo').value) || 0;
-  const merma = parseFloat(document.getElementById('pr_merma').value) || 0;
-  const neto = kgCrudo * (1 - merma/100);
-  document.getElementById('pr_kgneto').value = neto ? neto.toFixed(1) : '';
+  const kgNeto = parseFloat(document.getElementById('pr_kgneto').value) || 0;
+  const info = document.getElementById('pr_merma_info');
+  if(kgCrudo > 0 && kgNeto > 0){
+    const descarte = kgCrudo - kgNeto;
+    const mermaPct = (descarte / kgCrudo) * 100;
+    info.value = mermaPct.toFixed(1) + '% (' + descarte.toFixed(1) + ' kg de descarte)';
+  } else {
+    info.value = '';
+  }
 }
 
 function crearProduccion(btn){
   withLoading(btn, async ()=>{
     const fecha = document.getElementById('pr_fecha').value;
     const producto_id = document.getElementById('pr_producto').value;
-    const kg_crudo = parseFloat(document.getElementById('pr_kgcrudo').value);
-    const merma_pct = parseFloat(document.getElementById('pr_merma').value);
     const kg_neto = parseFloat(document.getElementById('pr_kgneto').value);
+    const kg_crudo = parseFloat(document.getElementById('pr_kgcrudo').value) || '';
     const notas = document.getElementById('pr_notas').value.trim();
-    if(!fecha || !producto_id || !kg_crudo || !merma_pct){ showToast('Completá fecha, producto, kg y merma'); return; }
+    if(!fecha || !producto_id || !kg_neto){ showToast('Completá fecha, producto y kg resultantes'); return; }
+
+    let merma_pct = '';
+    if(kg_crudo && kg_neto){
+      merma_pct = (((kg_crudo - kg_neto) / kg_crudo) * 100).toFixed(1);
+    }
+
     const nuevo = await apiAdd('Produccion', { fecha, producto_id, kg_crudo, merma_pct, kg_neto, notas });
     state.produccion.push(nuevo);
-    document.getElementById('pr_kgcrudo').value='';
     document.getElementById('pr_kgneto').value='';
+    document.getElementById('pr_kgcrudo').value='';
+    document.getElementById('pr_merma_info').value='';
     document.getElementById('pr_notas').value='';
     renderProduccion(); renderStock();
     showToast('Lote registrado');
@@ -832,7 +908,6 @@ function guardarConfig(btn){
     const merma = parseFloat(document.getElementById('cfg_merma').value);
     state.config.merma_pct_default = merma;
     await apiAdd('Config', { clave:'merma_pct_default', valor: merma });
-    document.getElementById('pr_merma').value = merma;
     showToast('Configuración guardada');
   });
 }
