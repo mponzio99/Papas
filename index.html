@@ -218,19 +218,21 @@
   <!-- COMPRAS -->
   <section class="panel" id="panel-compras">
     <div class="card">
-      <h2>Nueva compra de papa cruda</h2>
+      <h2 id="c_form_title">Nueva compra de papa cruda</h2>
+      <input type="hidden" id="c_edit_id" value="">
       <div class="grid">
         <div class="field"><label>Fecha</label><input id="c_fecha" type="date"></div>
         <div class="field"><label>Proveedor</label><input id="c_proveedor" placeholder="Nombre del proveedor"></div>
         <div class="field"><label>Kg comprados</label><input id="c_kg" type="number"></div>
         <div class="field"><label>Precio por kg ($)</label><input id="c_precio" type="number"></div>
       </div>
-      <button class="primary" onclick="crearCompra(this)">Registrar compra</button>
+      <button class="primary" id="c_submit_btn" onclick="crearCompra(this)">Registrar compra</button>
+      <button class="ghost" id="c_cancel_btn" style="display:none;margin-left:8px;" onclick="cancelarEdicionCompra()">Cancelar edición</button>
     </div>
     <div class="card">
       <h2>Historial de compras</h2>
       <table>
-        <thead><tr><th>Fecha</th><th>Proveedor</th><th class="right">Kg</th><th class="right">$/kg</th><th class="right">Total</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Proveedor</th><th class="right">Kg</th><th class="right">$/kg</th><th class="right">Total</th><th></th></tr></thead>
         <tbody id="comprasBody"></tbody>
       </table>
       <div class="empty" id="comprasEmpty" style="display:none;">No hay compras registradas.</div>
@@ -271,7 +273,8 @@
   <!-- CLIENTES -->
   <section class="panel" id="panel-clientes">
     <div class="card">
-      <h2>Nuevo cliente</h2>
+      <h2 id="cl_form_title">Nuevo cliente</h2>
+      <input type="hidden" id="cl_edit_id" value="">
       <div class="grid">
         <div class="field"><label>Nombre</label><input id="cl_nombre" placeholder="Nombre o razón social"></div>
         <div class="field"><label>Tipo</label>
@@ -282,12 +285,13 @@
         </div>
         <div class="field"><label>Teléfono (opcional)</label><input id="cl_telefono" placeholder="0351..."></div>
       </div>
-      <button class="primary" onclick="crearCliente(this)">Agregar cliente</button>
+      <button class="primary" id="cl_submit_btn" onclick="crearCliente(this)">Agregar cliente</button>
+      <button class="ghost" id="cl_cancel_btn" style="display:none;margin-left:8px;" onclick="cancelarEdicionCliente()">Cancelar edición</button>
     </div>
     <div class="card">
       <h2>Listado de clientes</h2>
       <table>
-        <thead><tr><th>Nombre</th><th>Tipo</th><th>Teléfono</th><th class="right">Saldo cta. cte.</th></tr></thead>
+        <thead><tr><th>Nombre</th><th>Tipo</th><th>Teléfono</th><th class="right">Saldo cta. cte.</th><th></th></tr></thead>
         <tbody id="clientesBody"></tbody>
       </table>
       <div class="empty" id="clientesEmpty" style="display:none;">No hay clientes cargados todavía.</div>
@@ -297,7 +301,8 @@
   <!-- VENTAS -->
   <section class="panel" id="panel-ventas">
     <div class="card">
-      <h2>Nueva venta</h2>
+      <h2 id="v_form_title">Nueva venta</h2>
+      <input type="hidden" id="v_edit_id" value="">
       <div class="grid">
         <div class="field"><label>Fecha</label><input id="v_fecha" type="date"></div>
         <div class="field"><label>Cliente</label><select id="v_cliente" onchange="onCambioClienteVenta()"></select></div>
@@ -314,12 +319,13 @@
       </div>
       <div class="field"><label>Total (calculado)</label><input id="v_total" type="number" readonly style="opacity:.75"></div>
       <div class="empty" id="v_stockAviso" style="display:none;padding:8px 0;text-align:left;color:var(--danger);"></div>
-      <button class="primary" onclick="crearVenta(this)">Registrar venta</button>
+      <button class="primary" id="v_submit_btn" onclick="crearVenta(this)">Registrar venta</button>
+      <button class="ghost" id="v_cancel_btn" style="display:none;margin-left:8px;" onclick="cancelarEdicionVenta()">Cancelar edición</button>
     </div>
     <div class="card">
       <h2>Historial de ventas</h2>
       <table>
-        <thead><tr><th>Fecha</th><th>Cliente</th><th>Producto</th><th class="right">Kg</th><th>Pago</th><th class="right">Total</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Cliente</th><th>Producto</th><th class="right">Kg</th><th>Pago</th><th class="right">Total</th><th></th></tr></thead>
         <tbody id="ventasBody"></tbody>
       </table>
       <div class="empty" id="ventasEmpty" style="display:none;">No hay ventas registradas.</div>
@@ -532,10 +538,14 @@ function renderCompras(){
   empty.style.display = state.compras.length ? 'none' : 'block';
   state.compras.slice().reverse().forEach(c=>{
     body.innerHTML += `<tr>
-      <td>${c.fecha}</td><td>${c.proveedor}</td>
+      <td>${formatFecha(c.fecha)}</td><td>${c.proveedor}</td>
       <td class="right num">${Number(c.kg).toLocaleString('es-AR')}</td>
       <td class="right num">$${Number(c.precio_kg).toLocaleString('es-AR')}</td>
       <td class="right num">$${Number(c.total).toLocaleString('es-AR')}</td>
+      <td style="white-space:nowrap;">
+        <button class="ghost" onclick="editarCompra('${c.id}')">Editar</button>
+        <button class="ghost" onclick="eliminarCompra('${c.id}', this)">Eliminar</button>
+      </td>
     </tr>`;
   });
 }
@@ -549,7 +559,7 @@ function renderProduccion(){
     const prod = state.productos.find(p=>String(p.id)===String(pr.producto_id));
     const merma = (pr.merma_pct !== '' && pr.merma_pct !== undefined && pr.merma_pct !== null) ? pr.merma_pct+'%' : '—';
     body.innerHTML += `<tr>
-      <td>${pr.fecha}</td><td>${prod?prod.nombre:'—'}</td>
+      <td>${formatFecha(pr.fecha)}</td><td>${prod?prod.nombre:'—'}</td>
       <td class="right num">${Number(pr.kg_neto).toLocaleString('es-AR')}</td>
       <td class="right num">${merma}</td>
     </tr>`;
@@ -569,6 +579,10 @@ function renderClientes(){
       <td><span class="chip chip-${cl.tipo}">${TIPO_LABEL[cl.tipo]||cl.tipo}</span></td>
       <td>${cl.telefono||'—'}</td>
       <td class="right num">$${saldo.toLocaleString('es-AR')}</td>
+      <td style="white-space:nowrap;">
+        <button class="ghost" onclick="editarCliente('${cl.id}')">Editar</button>
+        <button class="ghost" onclick="eliminarCliente('${cl.id}', this)">Eliminar</button>
+      </td>
     </tr>`;
   });
   const selCl = document.getElementById('v_cliente');
@@ -592,12 +606,16 @@ function renderVentas(){
     const cliente = state.clientes.find(c=>String(c.id)===String(v.cliente_id));
     const prod = state.productos.find(p=>String(p.id)===String(v.producto_id));
     body.innerHTML += `<tr>
-      <td>${v.fecha}</td>
+      <td>${formatFecha(v.fecha)}</td>
       <td>${cliente?cliente.nombre:'—'}</td>
       <td>${prod?prod.nombre:'—'}</td>
       <td class="right num">${Number(v.kg).toLocaleString('es-AR')}</td>
       <td>${FORMA_LABEL[v.forma_pago]||v.forma_pago}</td>
       <td class="right num">$${Number(v.total).toLocaleString('es-AR')}</td>
+      <td style="white-space:nowrap;">
+        <button class="ghost" onclick="editarVenta('${v.id}')">Editar</button>
+        <button class="ghost" onclick="eliminarVenta('${v.id}', this)">Eliminar</button>
+      </td>
     </tr>`;
   });
 }
@@ -623,7 +641,7 @@ function renderCobros(){
   state.cobros.slice().reverse().forEach(co=>{
     const cliente = state.clientes.find(c=>String(c.id)===String(co.cliente_id));
     body.innerHTML += `<tr>
-      <td>${co.fecha}</td>
+      <td>${formatFecha(co.fecha)}</td>
       <td>${cliente?cliente.nombre:'—'}</td>
       <td>${FORMA_LABEL[co.forma_pago]||co.forma_pago}</td>
       <td class="right num">$${Number(co.monto).toLocaleString('es-AR')}</td>
@@ -742,19 +760,63 @@ function eliminarProducto(id, btn){
 
 function crearCompra(btn){
   withLoading(btn, async ()=>{
+    const editId = document.getElementById('c_edit_id').value;
     const fecha = document.getElementById('c_fecha').value;
     const proveedor = document.getElementById('c_proveedor').value.trim();
     const kg = parseFloat(document.getElementById('c_kg').value);
     const precio_kg = parseFloat(document.getElementById('c_precio').value);
     if(!fecha || !proveedor || !kg || !precio_kg){ showToast('Completá todos los campos'); return; }
     const total = kg * precio_kg;
-    const nuevo = await apiAdd('Compras', { fecha, proveedor, kg, precio_kg, total });
-    state.compras.push(nuevo);
-    document.getElementById('c_proveedor').value='';
-    document.getElementById('c_kg').value='';
-    document.getElementById('c_precio').value='';
+
+    if(editId){
+      await apiUpdate('Compras', editId, { fecha, proveedor, kg, precio_kg, total });
+      const c = state.compras.find(x=>String(x.id)===String(editId));
+      if(c){ c.fecha=fecha; c.proveedor=proveedor; c.kg=kg; c.precio_kg=precio_kg; c.total=total; }
+      cancelarEdicionCompra();
+      showToast('Compra actualizada');
+    } else {
+      const nuevo = await apiAdd('Compras', { fecha, proveedor, kg, precio_kg, total });
+      state.compras.push(nuevo);
+      document.getElementById('c_proveedor').value='';
+      document.getElementById('c_kg').value='';
+      document.getElementById('c_precio').value='';
+      showToast('Compra registrada');
+    }
     renderCompras();
-    showToast('Compra registrada');
+  });
+}
+
+function editarCompra(id){
+  const c = state.compras.find(x=>String(x.id)===String(id));
+  if(!c) return;
+  document.getElementById('c_edit_id').value = c.id;
+  document.getElementById('c_fecha').value = c.fecha;
+  document.getElementById('c_proveedor').value = c.proveedor;
+  document.getElementById('c_kg').value = c.kg;
+  document.getElementById('c_precio').value = c.precio_kg;
+  document.getElementById('c_form_title').textContent = 'Editar compra';
+  document.getElementById('c_submit_btn').textContent = 'Guardar cambios';
+  document.getElementById('c_cancel_btn').style.display = 'inline-block';
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function cancelarEdicionCompra(){
+  document.getElementById('c_edit_id').value = '';
+  document.getElementById('c_proveedor').value = '';
+  document.getElementById('c_kg').value = '';
+  document.getElementById('c_precio').value = '';
+  document.getElementById('c_form_title').textContent = 'Nueva compra de papa cruda';
+  document.getElementById('c_submit_btn').textContent = 'Registrar compra';
+  document.getElementById('c_cancel_btn').style.display = 'none';
+}
+
+function eliminarCompra(id, btn){
+  if(!confirm('¿Eliminar esta compra? No se puede deshacer.')) return;
+  withLoading(btn, async ()=>{
+    await apiDelete('Compras', id);
+    state.compras = state.compras.filter(c=>String(c.id)!==String(id));
+    renderCompras();
+    showToast('Compra eliminada');
   });
 }
 
@@ -798,16 +860,59 @@ function crearProduccion(btn){
 
 function crearCliente(btn){
   withLoading(btn, async ()=>{
+    const editId = document.getElementById('cl_edit_id').value;
     const nombre = document.getElementById('cl_nombre').value.trim();
     const tipo = document.getElementById('cl_tipo').value;
     const telefono = document.getElementById('cl_telefono').value.trim();
     if(!nombre){ showToast('Completá el nombre'); return; }
-    const nuevo = await apiAdd('Clientes', { nombre, tipo, telefono, saldo:0 });
-    state.clientes.push(nuevo);
-    document.getElementById('cl_nombre').value='';
-    document.getElementById('cl_telefono').value='';
+
+    if(editId){
+      await apiUpdate('Clientes', editId, { nombre, tipo, telefono });
+      const cl = state.clientes.find(x=>String(x.id)===String(editId));
+      if(cl){ cl.nombre=nombre; cl.tipo=tipo; cl.telefono=telefono; }
+      cancelarEdicionCliente();
+      showToast('Cliente actualizado');
+    } else {
+      const nuevo = await apiAdd('Clientes', { nombre, tipo, telefono, saldo:0 });
+      state.clientes.push(nuevo);
+      document.getElementById('cl_nombre').value='';
+      document.getElementById('cl_telefono').value='';
+      showToast('Cliente agregado');
+    }
     renderClientes();
-    showToast('Cliente agregado');
+  });
+}
+
+function editarCliente(id){
+  const cl = state.clientes.find(x=>String(x.id)===String(id));
+  if(!cl) return;
+  document.getElementById('cl_edit_id').value = cl.id;
+  document.getElementById('cl_nombre').value = cl.nombre;
+  document.getElementById('cl_tipo').value = cl.tipo;
+  document.getElementById('cl_telefono').value = cl.telefono || '';
+  document.getElementById('cl_form_title').textContent = 'Editar cliente';
+  document.getElementById('cl_submit_btn').textContent = 'Guardar cambios';
+  document.getElementById('cl_cancel_btn').style.display = 'inline-block';
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function cancelarEdicionCliente(){
+  document.getElementById('cl_edit_id').value = '';
+  document.getElementById('cl_nombre').value = '';
+  document.getElementById('cl_telefono').value = '';
+  document.getElementById('cl_tipo').value = 'comercio';
+  document.getElementById('cl_form_title').textContent = 'Nuevo cliente';
+  document.getElementById('cl_submit_btn').textContent = 'Agregar cliente';
+  document.getElementById('cl_cancel_btn').style.display = 'none';
+}
+
+function eliminarCliente(id, btn){
+  if(!confirm('¿Eliminar este cliente? No se puede deshacer.')) return;
+  withLoading(btn, async ()=>{
+    await apiDelete('Clientes', id);
+    state.clientes = state.clientes.filter(c=>String(c.id)!==String(id));
+    renderClientes();
+    showToast('Cliente eliminado');
   });
 }
 
@@ -845,8 +950,18 @@ function chequearStockVenta(){
   }
 }
 
+async function ajustarSaldoCliente(clienteId, delta){
+  if(!delta) return;
+  const cliente = state.clientes.find(c=>String(c.id)===String(clienteId));
+  if(!cliente) return;
+  const nuevoSaldo = Number(cliente.saldo||0) + delta;
+  await apiUpdate('Clientes', cliente.id, { saldo: nuevoSaldo });
+  cliente.saldo = nuevoSaldo;
+}
+
 function crearVenta(btn){
   withLoading(btn, async ()=>{
+    const editId = document.getElementById('v_edit_id').value;
     const fecha = document.getElementById('v_fecha').value;
     const cliente_id = document.getElementById('v_cliente').value;
     const producto_id = document.getElementById('v_producto').value;
@@ -857,23 +972,77 @@ function crearVenta(btn){
     if(!fecha || !cliente_id || !producto_id || !kg || !precio_kg){
       showToast('Completá fecha, cliente, producto, kg y precio'); return;
     }
-    const nueva = await apiAdd('Ventas', { fecha, cliente_id, producto_id, kg, precio_kg, total, forma_pago });
-    state.ventas.push(nueva);
 
-    if(forma_pago === 'cuenta_corriente'){
-      const cliente = state.clientes.find(c=>String(c.id)===String(cliente_id));
-      if(cliente){
-        const nuevoSaldo = Number(cliente.saldo||0) + total;
-        await apiUpdate('Clientes', cliente.id, { saldo: nuevoSaldo });
-        cliente.saldo = nuevoSaldo;
+    if(editId){
+      const anterior = state.ventas.find(v=>String(v.id)===String(editId));
+      // primero revertimos el efecto que esta venta ya había tenido sobre el saldo (si era cta. cte.)
+      if(anterior && anterior.forma_pago === 'cuenta_corriente'){
+        await ajustarSaldoCliente(anterior.cliente_id, -Number(anterior.total||0));
       }
+      await apiUpdate('Ventas', editId, { fecha, cliente_id, producto_id, kg, precio_kg, total, forma_pago });
+      if(anterior){
+        anterior.fecha=fecha; anterior.cliente_id=cliente_id; anterior.producto_id=producto_id;
+        anterior.kg=kg; anterior.precio_kg=precio_kg; anterior.total=total; anterior.forma_pago=forma_pago;
+      }
+      // aplicamos el efecto nuevo (si ahora es cta. cte.)
+      if(forma_pago === 'cuenta_corriente'){
+        await ajustarSaldoCliente(cliente_id, total);
+      }
+      cancelarEdicionVenta();
+      showToast('Venta actualizada');
+    } else {
+      const nueva = await apiAdd('Ventas', { fecha, cliente_id, producto_id, kg, precio_kg, total, forma_pago });
+      state.ventas.push(nueva);
+      if(forma_pago === 'cuenta_corriente'){
+        await ajustarSaldoCliente(cliente_id, total);
+      }
+      document.getElementById('v_kg').value='';
+      document.getElementById('v_total').value='';
+      showToast('Venta registrada');
     }
 
-    document.getElementById('v_kg').value='';
-    document.getElementById('v_total').value='';
     document.getElementById('v_stockAviso').style.display='none';
     renderVentas(); renderClientes(); renderStock();
-    showToast('Venta registrada');
+  });
+}
+
+function editarVenta(id){
+  const v = state.ventas.find(x=>String(x.id)===String(id));
+  if(!v) return;
+  document.getElementById('v_edit_id').value = v.id;
+  document.getElementById('v_fecha').value = v.fecha;
+  document.getElementById('v_cliente').value = v.cliente_id;
+  document.getElementById('v_producto').value = v.producto_id;
+  document.getElementById('v_kg').value = v.kg;
+  document.getElementById('v_precio').value = v.precio_kg;
+  document.getElementById('v_forma_pago').value = v.forma_pago;
+  document.getElementById('v_total').value = v.total;
+  document.getElementById('v_form_title').textContent = 'Editar venta';
+  document.getElementById('v_submit_btn').textContent = 'Guardar cambios';
+  document.getElementById('v_cancel_btn').style.display = 'inline-block';
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function cancelarEdicionVenta(){
+  document.getElementById('v_edit_id').value = '';
+  document.getElementById('v_kg').value = '';
+  document.getElementById('v_total').value = '';
+  document.getElementById('v_form_title').textContent = 'Nueva venta';
+  document.getElementById('v_submit_btn').textContent = 'Registrar venta';
+  document.getElementById('v_cancel_btn').style.display = 'none';
+}
+
+function eliminarVenta(id, btn){
+  if(!confirm('¿Eliminar esta venta? No se puede deshacer.')) return;
+  withLoading(btn, async ()=>{
+    const v = state.ventas.find(x=>String(x.id)===String(id));
+    await apiDelete('Ventas', id);
+    if(v && v.forma_pago === 'cuenta_corriente'){
+      await ajustarSaldoCliente(v.cliente_id, -Number(v.total||0));
+    }
+    state.ventas = state.ventas.filter(x=>String(x.id)!==String(id));
+    renderVentas(); renderClientes(); renderStock();
+    showToast('Venta eliminada');
   });
 }
 
@@ -910,6 +1079,14 @@ function guardarConfig(btn){
     await apiAdd('Config', { clave:'merma_pct_default', valor: merma });
     showToast('Configuración guardada');
   });
+}
+
+function formatFecha(f){
+  if(!f) return '—';
+  const s = String(f);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return `${m[3]}/${m[2]}/${m[1]}`;
+  return s;
 }
 
 /* ====== TOAST ====== */
