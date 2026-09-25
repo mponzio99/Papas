@@ -168,6 +168,7 @@
   <button data-tab="clientes">Clientes</button>
   <button data-tab="ventas">Ventas</button>
   <button data-tab="cobros">Cobros</button>
+  <button data-tab="ajustes">Ajustes stock</button>
   <button data-tab="config">Config</button>
 </nav>
 
@@ -360,6 +361,36 @@
     </div>
   </section>
 
+  <!-- AJUSTES DE STOCK -->
+  <section class="panel" id="panel-ajustes">
+    <div class="card">
+      <h2 id="aj_form_title">Nuevo ajuste de stock</h2>
+      <input type="hidden" id="aj_edit_id" value="">
+      <div class="grid">
+        <div class="field"><label>Fecha</label><input id="aj_fecha" type="date"></div>
+        <div class="field"><label>Producto</label><select id="aj_producto"></select></div>
+        <div class="field"><label>Tipo</label>
+          <select id="aj_tipo">
+            <option value="baja">Baja (descarte / producto en mal estado)</option>
+            <option value="alta">Corrección positiva (suma stock)</option>
+          </select>
+        </div>
+        <div class="field"><label>Kg</label><input id="aj_kg" type="number" placeholder="Ej: 3.5"></div>
+      </div>
+      <div class="field"><label>Motivo</label><input id="aj_motivo" placeholder="Ej: se echó a perder, error de conteo"></div>
+      <button class="primary" id="aj_submit_btn" onclick="crearAjuste(this)">Registrar ajuste</button>
+      <button class="ghost" id="aj_cancel_btn" style="display:none;margin-left:8px;" onclick="cancelarEdicionAjuste()">Cancelar edición</button>
+    </div>
+    <div class="card">
+      <h2>Historial de ajustes</h2>
+      <table>
+        <thead><tr><th>Fecha</th><th>Producto</th><th class="right">Kg</th><th>Motivo</th><th></th></tr></thead>
+        <tbody id="ajustesBody"></tbody>
+      </table>
+      <div class="empty" id="ajustesEmpty" style="display:none;">No hay ajustes registrados.</div>
+    </div>
+  </section>
+
   <!-- CONFIG -->
   <section class="panel" id="panel-config">
     <div class="card">
@@ -383,6 +414,7 @@ let state = {
   clientes: [],
   ventas: [],
   cobros: [],
+  ajustes: [],
   config: { merma_pct_default: 15 }
 };
 
@@ -391,7 +423,7 @@ const CATEGORIA_LABEL = { congelada:'Congelada', sin_frisar:'Sin frisar', condim
 /* ====== NAV (menú hamburguesa) ====== */
 const TAB_LABELS = {
   stock:'Stock', productos:'Productos', compras:'Compras', produccion:'Producción',
-  clientes:'Clientes', ventas:'Ventas', cobros:'Cobros', config:'Config'
+  clientes:'Clientes', ventas:'Ventas', cobros:'Cobros', ajustes:'Ajustes stock', config:'Config'
 };
 const drawer = document.getElementById('tabs');
 const drawerOverlay = document.getElementById('drawerOverlay');
@@ -478,6 +510,7 @@ async function cargarTodo(){
     state.clientes = all.Clientes || [];
     state.ventas = all.Ventas || [];
     state.cobros = all.Cobros || [];
+    state.ajustes = all.Ajustes || [];
 
     const cfgRows = all.Config || [];
     if(cfgRows.length){
@@ -502,6 +535,7 @@ function renderAll(){
   renderClientes();
   renderVentas();
   renderCobros();
+  renderAjustes();
   renderStock();
   document.getElementById('cfg_merma').value = state.config.merma_pct_default;
 }
@@ -528,6 +562,10 @@ function renderProductos(){
   const selV = document.getElementById('v_producto');
   if(selV){
     selV.innerHTML = state.productos.map(p=>`<option value="${p.id}" data-precio="${p.precio_kg}">${p.nombre} — ${CATEGORIA_LABEL[p.categoria]||p.categoria}</option>`).join('');
+  }
+  const selAj = document.getElementById('aj_producto');
+  if(selAj){
+    selAj.innerHTML = state.productos.map(p=>`<option value="${p.id}">${p.nombre} — ${CATEGORIA_LABEL[p.categoria]||p.categoria}</option>`).join('');
   }
 }
 
@@ -628,6 +666,9 @@ function stockPorProducto(){
   state.ventas.forEach(v=>{
     porProducto[v.producto_id] = (porProducto[v.producto_id]||0) - Number(v.kg||0);
   });
+  state.ajustes.forEach(aj=>{
+    porProducto[aj.producto_id] = (porProducto[aj.producto_id]||0) + Number(aj.kg_ajuste||0);
+  });
   return porProducto;
 }
 
@@ -645,6 +686,29 @@ function renderCobros(){
       <td>${cliente?cliente.nombre:'—'}</td>
       <td>${FORMA_LABEL[co.forma_pago]||co.forma_pago}</td>
       <td class="right num">$${Number(co.monto).toLocaleString('es-AR')}</td>
+    </tr>`;
+  });
+}
+
+function renderAjustes(){
+  const body = document.getElementById('ajustesBody');
+  const empty = document.getElementById('ajustesEmpty');
+  if(!body) return;
+  body.innerHTML = '';
+  empty.style.display = state.ajustes.length ? 'none' : 'block';
+  state.ajustes.slice().reverse().forEach(aj=>{
+    const prod = state.productos.find(p=>String(p.id)===String(aj.producto_id));
+    const kg = Number(aj.kg_ajuste||0);
+    const signo = kg > 0 ? '+' : '';
+    body.innerHTML += `<tr>
+      <td>${formatFecha(aj.fecha)}</td>
+      <td>${prod?prod.nombre:'—'}</td>
+      <td class="right num" style="${kg<0?'color:var(--danger);':'color:var(--success);'}">${signo}${kg.toLocaleString('es-AR')}</td>
+      <td>${aj.motivo||'—'}</td>
+      <td style="white-space:nowrap;">
+        <button class="ghost" onclick="editarAjuste('${aj.id}')">Editar</button>
+        <button class="ghost" onclick="eliminarAjuste('${aj.id}', this)">Eliminar</button>
+      </td>
     </tr>`;
   });
 }
@@ -1046,6 +1110,71 @@ function eliminarVenta(id, btn){
   });
 }
 
+function crearAjuste(btn){
+  withLoading(btn, async ()=>{
+    const editId = document.getElementById('aj_edit_id').value;
+    const fecha = document.getElementById('aj_fecha').value;
+    const producto_id = document.getElementById('aj_producto').value;
+    const tipo = document.getElementById('aj_tipo').value;
+    const kgAbs = Math.abs(parseFloat(document.getElementById('aj_kg').value) || 0);
+    const motivo = document.getElementById('aj_motivo').value.trim();
+    if(!fecha || !producto_id || !kgAbs){ showToast('Completá fecha, producto y kg'); return; }
+
+    const kg_ajuste = tipo === 'baja' ? -kgAbs : kgAbs;
+
+    if(editId){
+      await apiUpdate('Ajustes', editId, { fecha, producto_id, kg_ajuste, motivo });
+      const aj = state.ajustes.find(x=>String(x.id)===String(editId));
+      if(aj){ aj.fecha=fecha; aj.producto_id=producto_id; aj.kg_ajuste=kg_ajuste; aj.motivo=motivo; }
+      cancelarEdicionAjuste();
+      showToast('Ajuste actualizado');
+    } else {
+      const nuevo = await apiAdd('Ajustes', { fecha, producto_id, kg_ajuste, motivo });
+      state.ajustes.push(nuevo);
+      document.getElementById('aj_kg').value='';
+      document.getElementById('aj_motivo').value='';
+      showToast('Ajuste registrado');
+    }
+    renderAjustes(); renderStock();
+  });
+}
+
+function editarAjuste(id){
+  const aj = state.ajustes.find(x=>String(x.id)===String(id));
+  if(!aj) return;
+  const kg = Number(aj.kg_ajuste||0);
+  document.getElementById('aj_edit_id').value = aj.id;
+  document.getElementById('aj_fecha').value = aj.fecha;
+  document.getElementById('aj_producto').value = aj.producto_id;
+  document.getElementById('aj_tipo').value = kg < 0 ? 'baja' : 'alta';
+  document.getElementById('aj_kg').value = Math.abs(kg);
+  document.getElementById('aj_motivo').value = aj.motivo || '';
+  document.getElementById('aj_form_title').textContent = 'Editar ajuste de stock';
+  document.getElementById('aj_submit_btn').textContent = 'Guardar cambios';
+  document.getElementById('aj_cancel_btn').style.display = 'inline-block';
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function cancelarEdicionAjuste(){
+  document.getElementById('aj_edit_id').value = '';
+  document.getElementById('aj_kg').value = '';
+  document.getElementById('aj_motivo').value = '';
+  document.getElementById('aj_tipo').value = 'baja';
+  document.getElementById('aj_form_title').textContent = 'Nuevo ajuste de stock';
+  document.getElementById('aj_submit_btn').textContent = 'Registrar ajuste';
+  document.getElementById('aj_cancel_btn').style.display = 'none';
+}
+
+function eliminarAjuste(id, btn){
+  if(!confirm('¿Eliminar este ajuste? No se puede deshacer.')) return;
+  withLoading(btn, async ()=>{
+    await apiDelete('Ajustes', id);
+    state.ajustes = state.ajustes.filter(a=>String(a.id)!==String(id));
+    renderAjustes(); renderStock();
+    showToast('Ajuste eliminado');
+  });
+}
+
 function crearCobro(btn){
   withLoading(btn, async ()=>{
     const fecha = document.getElementById('co_fecha').value;
@@ -1104,6 +1233,7 @@ document.getElementById('pr_fecha').valueAsDate = new Date();
 document.getElementById('c_fecha').valueAsDate = new Date();
 document.getElementById('v_fecha').valueAsDate = new Date();
 document.getElementById('co_fecha').valueAsDate = new Date();
+document.getElementById('aj_fecha').valueAsDate = new Date();
 cargarTodo();
 </script>
 </body>
